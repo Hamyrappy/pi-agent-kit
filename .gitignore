@@ -1,0 +1,12 @@
+node_modules/
+.env
+.env.*
+!.env.example
+config.json
+.pi-agent/
+.state/
+/vault/
+*.log
+.DS_Store
+
+/state/

@@ -1,0 +1,23 @@
+{
+  "name": "pi-agent-kit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Personal Telegram assistant with Pi, Markdown memory, and switchable faces",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "init": "node scripts/init.mjs",
+    "start": "node scripts/start.mjs",
+    "login": "node scripts/login.mjs",
+    "doctor": "node scripts/doctor.mjs",
+    "service:install": "node scripts/service.mjs",
+    "test": "node --test",
+    "model:configure": "node scripts/configure-model.mjs"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "1.5.2"
+  }
+}
