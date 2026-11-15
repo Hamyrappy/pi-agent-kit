@@ -123,6 +123,20 @@ test('Telegram client uses native fetch POST and never exposes token on network 
   await client.send(42, 'hello');
   assert.equal(calls[0].options.method, 'POST');
   assert.equal(JSON.parse(calls[0].options.body).text, 'hello');
+  await client.send(42, '**hi** there');
+  const styled = JSON.parse(calls[1].options.body);
+  assert.equal(styled.parse_mode, 'HTML'); assert.equal(styled.text, '<b>hi</b> there');
+  await client.send(42, '- one\n- two');
+  assert.equal(JSON.parse(calls[2].options.body).text, '• one\n• two');
+  const rejected = [];
+  const picky = new TelegramClient(config, { env, fetchImpl: async (_url, options) => {
+    const payload = JSON.parse(options.body); rejected.push(payload);
+    if (payload.parse_mode) return { ok: false, status: 400, json: async () => ({ ok: false, error_code: 400, description: 'can not parse entities' }) };
+    return { ok: true, json: async () => ({ ok: true, result: { id: 1 } }) };
+  } });
+  await picky.send(42, '**hi** there');
+  assert.equal(rejected[1].parse_mode, undefined); assert.equal(rejected[1].text, '**hi** there');
+  assert.equal(rejected[0].parse_mode, 'HTML');
   const failing = new TelegramClient(config, { env, fetchImpl: async () => { throw new Error(env.TELEGRAM_BOT_TOKEN); } });
   await assert.rejects(failing.call('getMe'), error => !error.message.includes(env.TELEGRAM_BOT_TOKEN));
 });
@@ -153,4 +167,22 @@ test('Pi recognizes provider errors even at exit zero; timeout and stop terminat
   const controller = new AbortController(); const turn = runPi({ ...input, signal: controller.signal });
   setTimeout(() => controller.abort(), 100);
   await assert.rejects(turn, /Остановлено/);
+});
+
+test('start greeting, reminders and cancellation are readable and scoped to the owner chat', async t => {
+  const { config } = await fixture(t), sent = [];
+  config.botName = 'Искра'; config.timezone = 'Europe/Moscow';
+  const bridge = new Bridge(config, { env, telegram: { send: async (_id, text) => sent.push(text) }, runner: async () => 'ok' });
+  await bridge.init();
+  const jobs = path.join(config.stateDir, 'jobs'); await mkdir(jobs);
+  await writeFile(path.join(jobs, 'tea.json'), JSON.stringify({ chatId: 42, dueAt: '2026-12-01T09:00:00Z', prompt: 'Выпить чай' }));
+  await writeFile(path.join(jobs, 'other.json'), JSON.stringify({ chatId: -100, dueAt: '2026-12-01T09:00:00Z', prompt: 'Чужое дело' }));
+  await bridge.handleUpdate(update(1, '/start'));
+  assert.match(sent.at(-1), /Я Искра/); assert.match(sent.at(-1), /голосовое/);
+  await bridge.handleUpdate(update(2, '/reminders'));
+  assert.match(sent.at(-1), /tea: Выпить чай/); assert.match(sent.at(-1), /12:00/); assert.doesNotMatch(sent.at(-1), /Чужое дело/);
+  await bridge.handleUpdate(update(3, '/cancel other')); assert.match(sent.at(-1), /не найдено/);
+  await bridge.handleUpdate(update(4, '/cancel tea')); assert.equal(sent.at(-1), 'Напоминание отменено. Если его выполнение уже началось, используйте /stop.');
+  await bridge.handleUpdate(update(5, '/reminders')); assert.match(sent.at(-1), /пока нет/);
+  await bridge.shutdown();
 });

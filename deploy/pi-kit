@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+if [[ -x /opt/pi-kit-node/bin/node ]]; then export PATH="/opt/pi-kit-node/bin:$PATH"; fi
+exec node "$ROOT/scripts/lifecycle.mjs" "$@"

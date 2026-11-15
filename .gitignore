@@ -3,6 +3,7 @@ node_modules/
 .env.*
 !.env.example
 config.json
+.deployment.json
 .pi-agent/
 .state/
 /vault/
