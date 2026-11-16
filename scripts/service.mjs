@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { root, loadConfig } from './common.mjs';
-if (process.platform !== 'linux') { console.error('Установка user service доступна в Linux с systemd.'); process.exit(1); }
+if (process.platform !== 'linux') { console.error('User service installation requires Linux with systemd.'); process.exit(1); }
 await loadConfig();
 const quote = value => '"' + value.replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll('%', '%%') + '"';
 const unitDir = path.join(os.homedir(), '.config', 'systemd', 'user');
@@ -13,7 +13,7 @@ const dest = path.join(unitDir, 'pi-agent-kit.service');
 await writeFile(dest, unit, { mode: 0o600 });
 for (const args of [['--user', 'daemon-reload'], ['--user', 'enable', '--now', 'pi-agent-kit.service']]) {
   const result = spawnSync('systemctl', args, { stdio: 'inherit' });
-  if (result.status !== 0) { console.error(`Unit сохранён: ${dest}. Нужен доступный systemd --user.`); process.exit(1); }
+  if (result.status !== 0) { console.error(`Unit saved: ${dest}. A working systemd --user session is required.`); process.exit(1); }
 }
-console.log('Сервис запущен. Логи: journalctl --user -u pi-agent-kit -f');
-console.log('После выхода из сеанса: loginctl enable-linger "$USER" (если разрешено администратором).');
+console.log('Service started. Logs: journalctl --user -u pi-agent-kit -f');
+console.log('To keep running after logout: loginctl enable-linger "$USER" (if allowed by your administrator).');

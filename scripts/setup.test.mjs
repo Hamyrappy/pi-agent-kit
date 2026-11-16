@@ -15,7 +15,7 @@ async function fixture() {
 function runInit(dir, answers) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ['scripts/init.mjs'], { cwd: dir, env: { ...process.env, PI_KIT_CONFIG: path.join(dir, 'config.json') } });
-    const prompts = ['Токен бота', 'Ваш числовой', 'Папка Markdown', 'Pi provider', 'Pi model'];
+    const prompts = ['Bot token', 'Your numeric', 'Markdown/Obsidian directory', 'Pi provider', 'Pi model'];
     let output = '', pending = '', index = 0;
     const timeout = setTimeout(() => { child.kill(); reject(new Error('init hung: ' + output)); }, 10000);
     child.stdout.on('data', data => {
@@ -45,7 +45,7 @@ test('init creates isolated private configuration and a usable two-face vault', 
     assert.equal((await stat(path.join(dir, 'config.json'))).mode & 0o777, 0o600);
     const again = await runInit(dir, []);
     assert.equal(again.code, 1);
-    assert.match(again.output, /не перезаписывает/);
+    assert.match(again.output, /does not overwrite/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 test('init rejects invalid owner IDs before creating configuration', async () => {
@@ -53,7 +53,7 @@ test('init rejects invalid owner IDs before creating configuration', async () =>
   try {
     const result = await runInit(dir, ['123456:fake_test_token', 'anybody']);
     assert.equal(result.code, 1);
-    assert.match(result.output, /положительный числовой/);
+    assert.match(result.output, /positive numeric/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 test('OpenRouter configuration caps output and preserves existing provider overrides', async () => {

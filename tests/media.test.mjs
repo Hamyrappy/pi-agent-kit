@@ -132,7 +132,7 @@ test('oversized metadata is refused before getFile and streamed files are bounde
   assert.equal(f.requests.filter(item => item.url.endsWith('/getFile')).length, 0);
   f.download((_request, response) => { response.write('12345'); response.end('67890'); });
   await bridge.handleUpdate(update(2, { document: { file_id: 'unknown-size' } })); await idle(bridge);
-  assert.equal(calls, 0); assert.equal(f.sent.filter(text => /слишком большой/.test(text)).length, 2);
+  assert.equal(calls, 0); assert.equal(f.sent.filter(text => /File too large/.test(text)).length, 2);
 });
 
 test('raw media acceptance is durable before download; /stop remains responsive during getFile', async t => {
@@ -147,7 +147,7 @@ test('raw media acceptance is durable before download; /stop remains responsive 
   assert.equal(accepted.offset, 2); assert.equal(accepted.chats['42'].active.media.fileId, 'durable-voice');
   await bridge.handleUpdate(update(2, { text: '/stop' })); await idle(bridge);
   assert.equal(calls, 0); assert.equal(bridge.state.chats['42'].queue.length, 0);
-  assert.ok(f.sent.some(text => text.includes('Останавливаю')));
+  assert.ok(f.sent.some(text => text.includes('Stopping the response')));
 });
 
 test('/stop cancels transcription without waiting for its endpoint', async t => {
@@ -168,7 +168,7 @@ test('missing transcription credentials and upstream failures give a useful mess
   bridge.env = testEnv;
   f.transcribe((_request, response) => { response.statusCode = 401; response.end(JSON.stringify({ error: token })); });
   await bridge.handleUpdate(update(2, { voice: { file_id: 'voice' } })); await idle(bridge);
-  assert.ok(f.sent.some(text => text.includes('Не удалось распознать')));
+  assert.ok(f.sent.some(text => text.includes('Could not transcribe')));
 });
 
 test('a completed turn sends only its own outbox files after text and records delivery', async t => {
@@ -244,7 +244,7 @@ test('DOCX is extracted locally to private text before the model reads it', asyn
   const data = await readFile(docx); f.download((_request, response) => response.end(data));
   let extracted;
   const bridge = await f.start(async input => {
-    const textPath = JSON.parse(input.prompt.match(/Извлечённый текст: ("[^"\n]+")/)[1]);
+    const textPath = JSON.parse(input.prompt.match(/Extracted text: ("[^"\n]+")/)[1]);
     extracted = await readFile(textPath, 'utf8');
     assert.equal((await stat(textPath)).mode & 0o777, 0o600);
     return 'Список прочитан.';
@@ -260,5 +260,5 @@ test('damaged or scanned PDF gives an honest readable-format request', async t =
   const bridge = await f.start(async () => { calls++; return 'unexpected'; });
   await bridge.handleUpdate(update(1, { document: { file_id: 'bad-pdf', file_name: 'scanned.pdf', mime_type: 'application/pdf' } })); await idle(bridge);
   assert.equal(calls, 0);
-  assert.ok(f.sent.some(text => text.includes('нужные страницы фотографиями')));
+  assert.ok(f.sent.some(text => text.includes('photos of the relevant pages')));
 });

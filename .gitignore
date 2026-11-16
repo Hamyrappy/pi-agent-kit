@@ -6,6 +6,7 @@ config.json
 .deployment.json
 .pi-agent/
 .state/
+.self-change/
 /vault/
 *.log
 .DS_Store

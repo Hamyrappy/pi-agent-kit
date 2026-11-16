@@ -1,6 +1,6 @@
 {
   "name": "pi-agent-kit",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Personal Telegram assistant with Pi, Markdown memory, and switchable faces",
   "type": "module",
@@ -14,7 +14,7 @@
     "login": "node scripts/login.mjs",
     "doctor": "node scripts/doctor.mjs",
     "service:install": "node scripts/service.mjs",
-    "test": "node --test",
+    "test": "node --test tests/*.test.mjs scripts/*.test.mjs",
     "model:configure": "node scripts/configure-model.mjs"
   },
   "dependencies": {

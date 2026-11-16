@@ -65,7 +65,7 @@ test('one active turn, queued messages and immediate /stop', async t => {
   await bridge.handleUpdate(update(2, 'second'));
   assert.equal(calls.length, 1); assert.equal(bridge.state.chats['42'].queue.length, 1);
   await bridge.handleUpdate(update(3, '/status'));
-  assert.ok(sent.some(text => text.includes('Готовлю ответ')));
+  assert.ok(sent.some(text => text.includes('Preparing a response')));
   await bridge.handleUpdate(update(4, '/stop')); await idle(bridge);
   assert.equal(calls[0].signal.aborted, true); assert.equal(calls.length, 1);
   assert.equal(bridge.state.chats['42'].queue.length, 0);
@@ -87,7 +87,7 @@ test('groups require explicit allowlist and mention or reply; commands require o
   assert.equal(bridge.state.chats['-100'].face, 'assistant');
   await bridge.handleUpdate(update(5, 'reply', 99, -100, { reply_to_message: { from: { id: 7 } } })); await idle(bridge);
   await bridge.handleUpdate(update(6, '/new@other_bot', 42));
-  assert.equal(calls.length, 2); assert.ok(sent.some(text => text.includes('только владельцу')));
+  assert.equal(calls.length, 2); assert.ok(sent.some(text => text.includes('only to the owner')));
   await bridge.shutdown();
 });
 
@@ -162,11 +162,11 @@ test('Pi recognizes provider errors even at exit zero; timeout and stop terminat
   const input = { config, face: 'assistant', sessionId: 'test-session', prompt: 'hello', env };
   await assert.rejects(runPi(input), /provider rejected/);
   await writeFile(fake, 'setInterval(()=>{},1000);'); config.pi.timeoutMs = 100;
-  await assert.rejects(runPi(input), /Превышено время/);
+  await assert.rejects(runPi(input), /Pi timed out/);
   config.pi.timeoutMs = 5000;
   const controller = new AbortController(); const turn = runPi({ ...input, signal: controller.signal });
   setTimeout(() => controller.abort(), 100);
-  await assert.rejects(turn, /Остановлено/);
+  await assert.rejects(turn, /Stopped/);
 });
 
 test('start greeting, reminders and cancellation are readable and scoped to the owner chat', async t => {
@@ -178,11 +178,11 @@ test('start greeting, reminders and cancellation are readable and scoped to the 
   await writeFile(path.join(jobs, 'tea.json'), JSON.stringify({ chatId: 42, dueAt: '2026-12-01T09:00:00Z', prompt: 'Выпить чай' }));
   await writeFile(path.join(jobs, 'other.json'), JSON.stringify({ chatId: -100, dueAt: '2026-12-01T09:00:00Z', prompt: 'Чужое дело' }));
   await bridge.handleUpdate(update(1, '/start'));
-  assert.match(sent.at(-1), /Я Искра/); assert.match(sent.at(-1), /голосовое/);
+  assert.match(sent.at(-1), /I'm Искра/); assert.match(sent.at(-1), /voice message/);
   await bridge.handleUpdate(update(2, '/reminders'));
   assert.match(sent.at(-1), /tea: Выпить чай/); assert.match(sent.at(-1), /12:00/); assert.doesNotMatch(sent.at(-1), /Чужое дело/);
-  await bridge.handleUpdate(update(3, '/cancel other')); assert.match(sent.at(-1), /не найдено/);
-  await bridge.handleUpdate(update(4, '/cancel tea')); assert.equal(sent.at(-1), 'Напоминание отменено. Если его выполнение уже началось, используйте /stop.');
-  await bridge.handleUpdate(update(5, '/reminders')); assert.match(sent.at(-1), /пока нет/);
+  await bridge.handleUpdate(update(3, '/cancel other')); assert.match(sent.at(-1), /not found/);
+  await bridge.handleUpdate(update(4, '/cancel tea')); assert.equal(sent.at(-1), 'Reminder cancelled. If it has already started, use /stop.');
+  await bridge.handleUpdate(update(5, '/reminders')); assert.match(sent.at(-1), /No active reminders/);
   await bridge.shutdown();
 });

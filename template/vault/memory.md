@@ -1,9 +1,9 @@
-# Общая память
+# Shared memory
 
-## О пользователе
+## About the user
 
-Пока не заполнено. Добавляй только подтверждённые сведения.
+Not filled in yet. Add only confirmed facts.
 
-## Предпочтения
+## Preferences
 
-## Решения и договорённости
+## Decisions and agreements

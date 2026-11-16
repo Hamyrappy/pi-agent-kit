@@ -6,6 +6,6 @@ try {
   process.env.PI_KIT_STATE_DIR = config.stateDir;
   await main({ argv: ['--config', configPath] });
 } catch (error) {
-  console.error(`Запуск не удался: ${error.message}`);
+  console.error(`Startup failed: ${error.message}`);
   process.exitCode = 1;
 }

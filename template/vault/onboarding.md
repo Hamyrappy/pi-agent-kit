@@ -1,16 +1,16 @@
-# Знакомство и цели
+# Getting acquainted and setting goals
 
-Заполняется постепенно в разговоре; не нужно отвечать на всё сразу.
+Fill this in gradually through conversation; there is no need to answer everything at once.
 
-- Как обращаться к пользователю и на каком языке общаться.
-- Какие две-три задачи сейчас важнее всего.
-- Где обычно теряется время и что хочется автоматизировать.
-- Какую инициативу пользователь считает полезной.
-- Когда и как допустимы напоминания; часовой пояс.
-- Какие действия требуют отдельного подтверждения.
+- How to address the user and which language to use.
+- Which two or three tasks matter most right now.
+- Where time is usually lost and what the user would like to automate.
+- What kind of initiative the user finds helpful.
+- When and how reminders are welcome; the user's timezone.
+- Which actions require separate confirmation.
 
-## Текущие цели
+## Current goals
 
-## Идеи автоматизаций
+## Automation ideas
 
-Идея, согласование и реально работающая автоматизация — разные состояния.
+An idea, an agreement and a working automation are different states.

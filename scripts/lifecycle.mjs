@@ -6,23 +6,23 @@ import { root } from './common.mjs';
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { stdio: options.capture ? ['ignore', 'pipe', 'pipe'] : 'inherit', encoding: 'utf8', ...options });
-  if (result.error || result.status !== 0) throw new Error(`${command}: ${options.capture ? result.stderr?.trim() : 'команда завершилась с ошибкой'} (${result.status ?? result.error?.code})`);
+  if (result.error || result.status !== 0) throw new Error(`${command}: ${options.capture ? result.stderr?.trim() : 'command failed'} (${result.status ?? result.error?.code})`);
   return result.stdout?.trim();
 }
 async function exists(file) { try { await access(file); return true; } catch { return false; } }
 function inside(parent, child) { return child === parent || child.startsWith(parent + path.sep); }
 export function validateBackupLocation(directory, application, vault) {
-  if (!path.isAbsolute(directory) || inside(application, directory) || inside(vault, directory)) throw new Error('Резервные копии должны быть вне кода и папки памяти.');
+  if (!path.isAbsolute(directory) || inside(application, directory) || inside(vault, directory)) throw new Error('Backups must be outside the source and memory directories.');
 }
 export function snapshotsToRemove(names) { return names.filter(name => /^snapshot-.*\.tar\.gz$/.test(name)).sort().reverse().slice(3); }
 export function assertArchivePaths(names) {
-  for (const name of names.split('\n').filter(Boolean)) if (name.startsWith('/') || name.split('/').includes('..')) throw new Error('Архив содержит небезопасный путь.');
+  for (const name of names.split('\n').filter(Boolean)) if (name.startsWith('/') || name.split('/').includes('..')) throw new Error('Archive contains an unsafe path.');
 }
 async function deployment() {
   let data = {};
   try { data = JSON.parse(await readFile(path.join(root, '.deployment.json'), 'utf8')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
   const value = { service: process.env.PI_KIT_SERVICE || data.service || 'pi-agent-kit', user: process.env.PI_KIT_USER || data.user || 'pi-agent-kit', backupDir: path.resolve(process.env.PI_KIT_BACKUP_DIR || data.backupDir || '/var/backups/pi-agent-kit') };
-  if (![value.service, value.user].every(item => /^[a-z_][a-z0-9_-]{0,30}$/.test(item))) throw new Error('Недопустимое имя службы/пользователя.');
+  if (![value.service, value.user].every(item => /^[a-z_][a-z0-9_-]{0,30}$/.test(item))) throw new Error('Invalid service name or username.');
   return value;
 }
 async function configuration() { return JSON.parse(await readFile(path.join(root, 'config.json'), 'utf8')); }
@@ -51,7 +51,7 @@ async function backup(settings) {
     if (await exists(latest)) await rename(latest, path.join(settings.backupDir, `snapshot-${new Date().toISOString().replace(/[:.]/g, '-')}.tar.gz`));
     await rename(pending, latest);
     for (const file of snapshotsToRemove(await readdir(settings.backupDir))) await rm(path.join(settings.backupDir, file));
-    console.log(`Резервная копия: ${latest} (содержит секреты; храните приватно).`);
+    console.log(`Backup: ${latest} (contains secrets; keep it private).`);
     return latest;
   } finally {
     if (wasActive) service(settings, 'start');
@@ -60,9 +60,9 @@ async function backup(settings) {
 }
 function ensureClean() {
   const changes = run('git', ['-c', `safe.directory=${root}`, '-C', root, 'status', '--porcelain', '--untracked-files=normal'], { capture: true });
-  if (changes) throw new Error(`Исходники изменены. Сначала сохраните их: sudo ${root}/deploy/pi-kit backup. Согласуйте свои изменения с upstream вручную перед обновлением или откатом.\n${changes}`);
+  if (changes) throw new Error(`Source files have changed. Back them up first: sudo ${root}/deploy/pi-kit backup. Merge your changes with upstream manually before updating or rolling back.\n${changes}`);
   const unpublished = run('git', ['-c', `safe.directory=${root}`, '-C', root, 'rev-list', 'HEAD', '--not', '--remotes=origin'], { capture: true });
-  if (unpublished) throw new Error(`Есть локальные коммиты, отсутствующие в origin. Обновление и откат остановлены, чтобы сохранить ваши исходники. Сначала: sudo ${root}/deploy/pi-kit backup. Затем обновите refs origin и согласуйте локальные изменения с upstream вручную; сохраните свою ветку перед заменой кода.`);
+  if (unpublished) throw new Error(`Local commits are absent from origin. Update and rollback were stopped to preserve your source. First run: sudo ${root}/deploy/pi-kit backup. Then refresh origin refs and merge local changes with upstream manually; preserve your branch before replacing source.`);
 }
 async function switchDirectories(stage, settings, { persistent = true } = {}) {
   const previous = `${root}.previous`;
@@ -111,22 +111,22 @@ async function update(settings, version = 'main') {
     run('runuser', ['-u', settings.user, '--', npm, 'ci', '--ignore-scripts'], { cwd: stage });
     run('runuser', ['-u', settings.user, '--', npm, 'test'], { cwd: stage });
     await switchDirectories(stage, settings);
-    console.log(`Обновлено. Предыдущий код: ${root}.previous. Откат: sudo ${root}/deploy/pi-kit rollback`);
+    console.log(`Updated. Previous source: ${root}.previous. Rollback: sudo ${root}/deploy/pi-kit rollback`);
   } finally { await rm(stage, { recursive: true, force: true }); }
 }
 async function rollback(settings) {
   const previous = `${root}.previous`;
-  if (!await exists(path.join(previous, 'package.json'))) throw new Error('Предыдущей версии нет. Используйте restore <архив>.');
+  if (!await exists(path.join(previous, 'package.json'))) throw new Error('No previous release is available. Use restore <archive>.');
   ensureClean();
   await backup(settings);
   const stage = `${root}.rollback-${process.pid}`;
   await rename(previous, stage);
   try { await switchDirectories(stage, settings); }
   catch (error) { if (await exists(stage)) await rename(stage, previous); throw error; }
-  console.log('Предыдущая версия запущена; память и настройки сохранены.');
+  console.log('Previous release started; memory and settings were preserved.');
 }
 async function restore(settings, archive) {
-  if (!archive) throw new Error('Укажите архив: restore /var/backups/pi-agent-kit/latest.tar.gz');
+  if (!archive) throw new Error('Specify an archive: restore /var/backups/pi-agent-kit/latest.tar.gz');
   const stage = await mkdtemp(`${root}.restore-`);
   const unpack = await mkdtemp(path.join(os.tmpdir(), 'pi-kit-restore-'));
   let externalPrevious;
@@ -135,10 +135,10 @@ async function restore(settings, archive) {
   try {
     archive = path.resolve(archive);
     const listing = run('tar', ['-tzf', archive], { capture: true });
-    if (listing.split('\n').some(file => !['manifest.json', 'app.tar.gz', 'vault.tar.gz'].includes(file))) throw new Error('Неизвестный формат архива.');
+    if (listing.split('\n').some(file => !['manifest.json', 'app.tar.gz', 'vault.tar.gz'].includes(file))) throw new Error('Unknown archive format.');
     run('tar', ['-xzf', archive, '--no-same-owner', '-C', unpack]);
     const manifest = JSON.parse(await readFile(path.join(unpack, 'manifest.json'), 'utf8'));
-    if (manifest.format !== 1 || manifest.root !== root || !path.isAbsolute(manifest.vault)) throw new Error('Архив создан для другой установки.');
+    if (manifest.format !== 1 || manifest.root !== root || !path.isAbsolute(manifest.vault)) throw new Error('Archive belongs to another installation.');
     assertArchivePaths(run('tar', ['-tzf', path.join(unpack, 'app.tar.gz')], { capture: true }));
     run('tar', ['-xzf', path.join(unpack, 'app.tar.gz'), '--no-same-owner', '-C', stage]);
     // Keep git history for later updates; restored source differences remain visible.
@@ -147,7 +147,7 @@ async function restore(settings, archive) {
     run('runuser', ['-u', settings.user, '--', path.join(path.dirname(process.execPath), 'npm'), 'ci', '--ignore-scripts'], { cwd: stage });
     if (manifest.externalVault) {
       const current = await configuration();
-      if (path.resolve(current.vaultRoot) !== manifest.vault || inside(root, manifest.vault) || manifest.vault === '/') throw new Error('Путь внешней памяти отличается; восстановление остановлено.');
+      if (path.resolve(current.vaultRoot) !== manifest.vault || inside(root, manifest.vault) || manifest.vault === '/') throw new Error('External memory path differs; restore was stopped.');
       assertArchivePaths(run('tar', ['-tzf', path.join(unpack, 'vault.tar.gz')], { capture: true }));
       service(settings, 'stop');
       externalVault = manifest.vault;
@@ -159,8 +159,8 @@ async function restore(settings, archive) {
     }
     await switchDirectories(stage, settings, { persistent: false });
     completed = true;
-    if (externalPrevious) console.log(`Предыдущая внешняя память сохранена: ${externalPrevious}`);
-    console.log('Архив восстановлен, служба запущена.');
+    if (externalPrevious) console.log(`Previous external memory saved: ${externalPrevious}`);
+    console.log('Archive restored; service started.');
   } finally {
     if (!completed && externalPrevious && await exists(externalPrevious)) {
       service(settings, 'stop'); await rm(externalVault, { recursive: true, force: true }); await rename(externalPrevious, externalVault); service(settings, 'start');
@@ -169,7 +169,7 @@ async function restore(settings, archive) {
   }
 }
 async function adopt(settings, version = 'main') {
-  if (await exists(path.join(root, '.git'))) throw new Error('Git уже настроен. Используйте update.');
+  if (await exists(path.join(root, '.git'))) throw new Error('Git is already configured. Use update.');
   await backup(settings);
   const stage = await mkdtemp(`${root}.adopt-`);
   try {
@@ -178,29 +178,29 @@ async function adopt(settings, version = 'main') {
     const files = run('git', ['-C', stage, 'ls-files'], { capture: true }).split('\n');
     for (const file of files) {
       const expected = await readFile(path.join(stage, file));
-      let actual; try { actual = await readFile(path.join(root, file)); } catch { throw new Error(`Нет ${file}. Сначала вручную перенесите проверенные файлы новой версии; личные данные не изменены.`); }
-      if (!actual.equals(expected)) throw new Error(`Локальный ${file} отличается. Сохраните правки и вручную согласуйте их перед adopt; резервная копия готова.`);
+      let actual; try { actual = await readFile(path.join(root, file)); } catch { throw new Error(`Missing ${file}. Copy the reviewed release files manually first; private data was not changed.`); }
+      if (!actual.equals(expected)) throw new Error(`Local ${file} differs. Preserve and merge your changes manually before adopt; a backup is available.`);
     }
     await rename(path.join(stage, '.git'), path.join(root, '.git'));
     run('chown', ['-R', `${settings.user}:${settings.user}`, path.join(root, '.git')]);
-    console.log('Существующая установка принята под управление Git. Данные и исходники сохранены.');
+    console.log('Existing installation adopted into Git. Data and source were preserved.');
   } finally { await rm(stage, { recursive: true, force: true }); }
 }
 export async function main(args = process.argv.slice(2)) {
   const [command = 'help', value] = args;
-  if (command === 'help') { console.log('sudo ./deploy/pi-kit backup | update [tag/commit/main] | rollback | restore <archive> | adopt [version]\nbackup: свежая копия + до 3 предыдущих; update отказывается от незакоммиченных исходников.'); return; }
-  if (process.getuid?.() !== 0) throw new Error('Нужен sudo/root для управления службой и резервными копиями.');
+  if (command === 'help') { console.log('sudo ./deploy/pi-kit backup | update [tag/commit/main] | rollback | restore <archive> | adopt [version]\nbackup: latest plus up to 3 snapshots; update refuses uncommitted or unpublished source.'); return; }
+  if (process.getuid?.() !== 0) throw new Error('sudo/root is required to manage the service and backups.');
   const settings = await deployment();
   // A shared lock prevents timer/update/restore races. A killed command leaves a visible lock.
   const lock = `${root}.maintenance-lock`;
-  try { await mkdir(lock); } catch { throw new Error(`Другая операция выполняется (${lock}). Если процесс завершён, удалите пустую папку блокировки вручную.`); }
+  try { await mkdir(lock); } catch { throw new Error(`Another operation is running (${lock}). If its process has ended, remove the empty lock directory manually.`); }
   try {
     if (command === 'backup') await backup(settings);
     else if (command === 'update') await update(settings, value);
     else if (command === 'rollback') await rollback(settings);
     else if (command === 'restore') await restore(settings, value);
     else if (command === 'adopt') await adopt(settings, value);
-    else throw new Error('Неизвестная команда. См. help.');
+    else throw new Error('Unknown command. See help.');
   } finally { await rm(lock, { recursive: true, force: true }); }
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === path.join(root, 'scripts/lifecycle.mjs')) main().catch(error => { console.error(error.message); process.exitCode = 1; });

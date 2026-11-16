@@ -80,7 +80,7 @@ test('update refuses edited code before touching private files or contacting ups
   await writeFile(path.join(f.app, 'scripts/start.mjs'), '// owner edit\n');
   const result = f.call('update');
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /Исходники изменены/);
+  assert.match(result.stderr, /Source files have changed/);
   assert.equal(await readFile(path.join(f.app, 'vault/memory.md'), 'utf8'), 'private memory');
 });
 test('update and rollback preserve clean committed owner changes absent from origin', async t => {
@@ -98,8 +98,8 @@ test('update and rollback preserve clean committed owner changes absent from ori
   for (const operation of ['update', 'rollback']) {
     const result = f.call(operation);
     assert.equal(result.status, 1, operation);
-    assert.match(result.stderr, /локальные коммиты, отсутствующие в origin/);
-    assert.match(result.stderr, /согласуйте локальные изменения с upstream вручную/);
+    assert.match(result.stderr, /Local commits are absent from origin/);
+    assert.match(result.stderr, /merge local changes with upstream manually/);
     assert.equal(await readFile(path.join(f.app, 'scripts/start.mjs'), 'utf8'), '// committed owner improvement\n');
     assert.equal(await readFile(path.join(f.app, 'vault/memory.md'), 'utf8'), 'private memory');
   }
