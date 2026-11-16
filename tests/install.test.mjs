@@ -13,6 +13,7 @@ test('system service has explicit Node path, user home and timezone; rejects uni
   assert.match(text, /User=pi-agent-kit/);
   assert.match(text, /Environment=PATH=\/opt\/node\/bin:/);
   assert.match(text, /Environment=TZ=Europe\/Moscow/);
+  assert.match(text, /StartLimitIntervalSec=300\nStartLimitBurst=10\n/);
   assert.throws(() => unitText({ ...data, directory: '/opt/kit\nExecStart=/bin/evil' }));
 });
 test('backup paths, retention and archive traversal guards', () => {

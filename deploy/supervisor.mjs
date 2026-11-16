@@ -56,7 +56,9 @@ export class Supervisor {
   async stopChild() {
     if (!this.child || this.exited) return;
     try { process.kill(-this.child.pid, 'SIGTERM'); } catch {}
-    await Promise.race([this.exitPromise, pause(this.options.stopMs)]);
+    let timer;
+    try { await Promise.race([this.exitPromise, new Promise(resolve => { timer = setTimeout(resolve, this.options.stopMs); })]); }
+    finally { clearTimeout(timer); }
     if (!this.exited) { try { process.kill(-this.child.pid, 'SIGKILL'); } catch {} await this.exitPromise; }
   }
   async snapshot() {

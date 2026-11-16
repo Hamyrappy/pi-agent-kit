@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, access, rm, rename, symlink } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { atomicJson, begin, check, requestChange, readJson } from '../src/self-change.mjs';
 import { Supervisor } from '../deploy/supervisor.mjs';
 const cleanups = new Map();
@@ -157,4 +159,29 @@ test('supervisor recovery uses its standalone code when the application recovery
   await assert.rejects(access(path.join(root, 'src/self-change.mjs')));
   assert.equal(await supervisor.ready(), true);
   await privateDataUnchanged(root);
+});
+test('standalone supervisor exits promptly after a cooperative child stops', async t => {
+  const root = await fixture(t);
+  const child = spawn(process.execPath, [fileURLToPath(new URL('../deploy/supervisor.mjs', import.meta.url)), root], { stdio: 'ignore' });
+  let exited = false;
+  const closed = new Promise((resolve, reject) => {
+    child.once('error', reject);
+    child.once('close', (code, signal) => { exited = true; resolve({ code, signal }); });
+  });
+  cleanups.set(root, async () => {
+    if (!exited) child.kill('SIGKILL');
+    await closed;
+    const status = await readJson(path.join(root, '.self-change/supervisor.json'));
+    if (status?.childPid) { try { process.kill(-status.childPid, 'SIGKILL'); } catch {} }
+  });
+  await until(async () => (await readJson(path.join(root, '.self-change/supervisor.json')))?.state === 'running');
+  const started = performance.now();
+  child.kill('SIGTERM');
+  let timer;
+  const result = await Promise.race([
+    closed,
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Standalone supervisor retained its shutdown timeout after the child exited')), 2000); })
+  ]).finally(() => clearTimeout(timer));
+  assert.equal(result.code, 0);
+  assert.ok(performance.now() - started < 2000);
 });
