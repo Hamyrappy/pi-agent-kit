@@ -13,7 +13,7 @@ export function redact(value, env = process.env) {
     .replace(/\b(?:sk-|Bearer\s+)[A-Za-z0-9_./+-]{10,}/gi, '[redacted]');
 }
 
-export async function buildPiArgs({ config, face, sessionId, caller, attachments = [], outboxDir }) {
+export async function buildPiArgs({ config, face, sessionId, caller, attachments = [], outboxDir, target = config.pi }) {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(face)) throw new Error('Invalid face name');
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*[a-zA-Z0-9]$/.test(sessionId)) throw new Error('Invalid session ID');
   const faceFile = path.join(config.facesDir, face, 'AGENTS.md');
@@ -25,9 +25,9 @@ export async function buildPiArgs({ config, face, sessionId, caller, attachments
     await access(config.memoryFile);
     args.push('--append-system-prompt', config.memoryFile);
   }
-  if (config.pi.provider) args.push('--provider', config.pi.provider);
-  if (config.pi.model) args.push('--model', config.pi.model);
-  if (config.pi.thinking) args.push('--thinking', config.pi.thinking);
+  if (target.provider) args.push('--provider', target.provider);
+  if (target.model) args.push('--model', target.model);
+  if (target.thinking) args.push('--thinking', target.thinking);
   if (config.timezone) args.push('--append-system-prompt', `Configured owner timezone: ${config.timezone}. Use this timezone when interpreting dates, times, and reminders unless the user specifies another.`);
   if (caller?.isOwner !== false && config.kitRoot) args.push('--append-system-prompt', `Your application source is ${JSON.stringify(config.kitRoot)} (PI_KIT_ROOT). For an owner-requested code change use the self-change CLI with the same Node executable: node "$PI_KIT_ROOT/scripts/self-change.mjs" begin before the first edit; then check; then apply --chat-id "$PI_KIT_CHAT_ID". begin saves a private code snapshot. apply queues a supervised restart after your current answer and attachments are delivered; a failed startup restores the saved code. restart requests an ordinary restart; status inspects progress; rollback --chat-id "$PI_KIT_CHAT_ID" requests the saved code. Keep user notes, state and credentials intact. Do not kill or restart your bridge or supervisor directly, launch duplicate pollers, edit the supervisor, or change its control files. Report the queued operation honestly; the restarted bridge will send its result. Ordinary self-change cannot recover changed dependencies or the installed supervisor: do not run npm install/npm ci, edit package.json/package-lock.json/node_modules, or replace the supervisor. Dependency changes make automatic apply/rollback refuse; use a separate verified maintenance procedure with a full backup. You have the service user's permissions; do not claim root access.`);
   if (outboxDir && caller?.isOwner !== false) args.push('--append-system-prompt', `For files the user requests, create the final deliverable files directly in the private directory ${JSON.stringify(outboxDir)} (also in PI_KIT_OUTBOX). The Telegram bridge sends ordinary files there after your answer. Maximum 20 files, 20 MB each; no symlinks or subdirectories. Do not copy credentials or unrelated private files. Files elsewhere are not sent automatically. Mention the result naturally in your answer.`);
@@ -46,16 +46,33 @@ function messageText(message) {
   return (message.content ?? []).filter(block => block.type === 'text').map(block => block.text).join('\n');
 }
 
+/**
+ * One turn. If the primary model fails before any tool ran and `pi.fallback` names a model,
+ * the turn is retried once on the fallback, so no tool action is repeated.
+ */
+export async function runPi(input) {
+  const { config, signal, log = message => console.error(message) } = input;
+  try {
+    return await runPiOnce(input, config.pi);
+  } catch (error) {
+    const fallback = config.pi?.fallback;
+    if (!fallback?.model || !error.fallbackSafe || signal?.aborted) throw error;
+    log(`Primary model failed, using fallback ${fallback.provider ?? ''}/${fallback.model}: ${error.message.slice(0, 300)}`);
+    const text = await runPiOnce(input, { thinking: config.pi.thinking, ...fallback });
+    return fallback.notify === false ? text : `${text}\n\n(Fallback model ${fallback.model} answered: the primary model failed.)`;
+  }
+}
+
 /** A single process per turn. Session IDs make subsequent invocations resume the same history. */
-export async function runPi({ config, face, sessionId, prompt, signal, caller, attachments, outboxDir, env = process.env, onEvent }) {
-  const args = await buildPiArgs({ config, face, sessionId, caller, attachments, outboxDir });
+async function runPiOnce({ config, face, sessionId, prompt, signal, caller, attachments, outboxDir, env = process.env, onEvent }, target) {
+  const args = await buildPiArgs({ config, face, sessionId, caller, attachments, outboxDir, target });
   if (signal?.aborted) throw new Error('Stopped.');
   return new Promise((resolve, reject) => {
     const child = spawn(config.pi.command ?? 'pi', args, {
       cwd: config.vaultRoot, env, stdio: ['pipe', 'pipe', 'pipe'], detached: process.platform !== 'win32',
     });
     let pending = '', stderr = '', finalText = '', modelError = '', protocolError = '';
-    let stopped = false, timedOut = false, killTimer;
+    let stopped = false, timedOut = false, toolStarted = false, killTimer;
     const kill = signalName => {
       try {
         if (process.platform !== 'win32' && child.pid) process.kill(-child.pid, signalName);
@@ -86,6 +103,7 @@ export async function runPi({ config, face, sessionId, prompt, signal, caller, a
           finalText = messageText(message);
         }
       }
+      if (event.type === 'tool_execution_start') toolStarted = true;
       if (event.type === 'auto_retry_end' && event.success === false) modelError = event.finalError || 'Pi: retries failed.';
       if (event.type === 'agent_settled' && event.aborted) modelError = 'Stopped.';
       onEvent?.(event);
@@ -114,12 +132,18 @@ export async function runPi({ config, face, sessionId, prompt, signal, caller, a
     child.on('close', code => {
       cleanup();
       if (pending.trim()) consume(pending);
-      if (timedOut) return reject(new Error('Pi timed out.'));
-      if (protocolError) return reject(new Error(protocolError));
-      if (stopped) return reject(new Error('Stopped.'));
-      if (code !== 0) return reject(new Error(`Pi exited with code ${code}: ${redact(stderr.trim(), env).slice(-1500) || 'no diagnostic output'}`));
-      if (modelError) return reject(new Error(redact(modelError, env).slice(0, 1500)));
-      if (!finalText.trim()) return reject(new Error('Pi exited without a text response.'));
+      // A failure is retried on a fallback model only if the user did not stop it and no tool ran.
+      const fail = (message, retryable = true) => {
+        const error = new Error(message);
+        error.fallbackSafe = retryable && !toolStarted && !(stopped && !timedOut);
+        reject(error);
+      };
+      if (timedOut) return fail('Pi timed out.');
+      if (protocolError) return fail(protocolError, false);
+      if (stopped) return fail('Stopped.', false);
+      if (code !== 0) return fail(`Pi exited with code ${code}: ${redact(stderr.trim(), env).slice(-1500) || 'no diagnostic output'}`);
+      if (modelError) return fail(redact(modelError, env).slice(0, 1500), modelError !== 'Stopped.');
+      if (!finalText.trim()) return fail('Pi exited without a text response.');
       resolve(redact(finalText, env));
     });
   });

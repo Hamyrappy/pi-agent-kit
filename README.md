@@ -90,6 +90,16 @@ For a new OpenRouter model, configuration sets an 8192-token output limit while
 preserving an existing user limit. This does not limit account spending.
 Other providers supported by Pi can also be used.
 
+A fallback model is optional. Add `pi.fallback` with `provider` and `model`
+(and `thinking`, which otherwise follows the primary). When the primary model
+fails before any tool has run, for example on a quota, login or provider error,
+the turn is retried once on the fallback, and the reply ends with a one-line note
+naming it (`"notify": false` removes the note). A turn that already ran a tool, or
+that the user stopped, is not retried, so no action is repeated. Example:
+`"fallback": { "provider": "openrouter", "model": "deepseek/deepseek-v4.1-flash" }`
+with a primary such as `openai-codex` / `gpt-6.1-sol`. Run `npm run model:configure`
+after setting an OpenRouter fallback.
+
 ## Changing its own code and restarting
 
 The kit's name does not determine the Telegram bot's name. `botName`, token,

@@ -169,6 +169,31 @@ test('Pi recognizes provider errors even at exit zero; timeout and stop terminat
   await assert.rejects(turn, /Stopped/);
 });
 
+test('a failed primary model falls back once, but never after a tool ran or on stop', async t => {
+  const { config, dir } = await fixture(t), fake = path.join(dir, 'fake-fallback.mjs'), logs = [];
+  await writeFile(fake, `const a=process.argv, m=a[a.indexOf('--model')+1], tool=process.env.FAKE_TOOL==='1';
+const out=o=>console.log(JSON.stringify(o));
+if (m==='primary') { if (tool) out({type:'tool_execution_start'}); out({type:'message_end',message:{role:'assistant',content:[],stopReason:'error',errorMessage:'quota exceeded'}}); }
+else out({type:'message_end',message:{role:'assistant',content:[{type:'text',text:'from '+m+' thinking '+a[a.indexOf('--thinking')+1]}],stopReason:'stop'}});`);
+  config.pi = { command: process.execPath, args: [fake], timeoutMs: 2000, provider: 'p', model: 'primary', thinking: 'low',
+    fallback: { provider: 'openrouter', model: 'backup' } };
+  const input = { config, face: 'assistant', sessionId: 'test-session', prompt: 'hello', env, log: m => logs.push(m) };
+  const text = await runPi(input);
+  assert.match(text, /^from backup thinking low/);
+  assert.match(text, /Fallback model backup answered/);
+  assert.match(logs[0], /quota exceeded/);
+  config.pi.fallback.notify = false;
+  assert.equal(await runPi(input), 'from backup thinking low');
+  await assert.rejects(runPi({ ...input, env: { ...env, FAKE_TOOL: '1' } }), /quota exceeded/);
+  delete config.pi.fallback;
+  await assert.rejects(runPi(input), /quota exceeded/);
+  config.pi.fallback = { model: 'backup' };
+  await writeFile(fake, 'setInterval(()=>{},1000);'); config.pi.timeoutMs = 5000;
+  const controller = new AbortController(); const turn = runPi({ ...input, signal: controller.signal });
+  setTimeout(() => controller.abort(), 100);
+  await assert.rejects(turn, /Stopped/);
+});
+
 test('start greeting, reminders and cancellation are readable and scoped to the owner chat', async t => {
   const { config } = await fixture(t), sent = [];
   config.botName = 'Искра'; config.timezone = 'Europe/Moscow';
