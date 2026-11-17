@@ -58,7 +58,14 @@ export async function runPi(input) {
     const fallback = config.pi?.fallback;
     if (!fallback?.model || !error.fallbackSafe || signal?.aborted) throw error;
     log(`Primary model failed, using fallback ${fallback.provider ?? ''}/${fallback.model}: ${error.message.slice(0, 300)}`);
-    const text = await runPiOnce(input, { thinking: config.pi.thinking, ...fallback });
+    let text;
+    try {
+      // A fallback is a rescue, not a second full wait: it gets its own, shorter default deadline.
+      text = await runPiOnce({ ...input, config: { ...config, pi: { ...config.pi, timeoutMs: fallback.timeoutMs ?? 180000 } } },
+        { thinking: config.pi.thinking, ...fallback });
+    } catch (fallbackError) {
+      throw new Error(`${error.message.slice(0, 700)}\nFallback model ${fallback.model} also failed: ${fallbackError.message.slice(0, 700)}`);
+    }
     return fallback.notify === false ? text : `${text}\n\n(Fallback model ${fallback.model} answered: the primary model failed.)`;
   }
 }

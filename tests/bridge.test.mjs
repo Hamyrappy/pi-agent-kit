@@ -185,9 +185,11 @@ else out({type:'message_end',message:{role:'assistant',content:[{type:'text',tex
   config.pi.fallback.notify = false;
   assert.equal(await runPi(input), 'from backup thinking low');
   await assert.rejects(runPi({ ...input, env: { ...env, FAKE_TOOL: '1' } }), /quota exceeded/);
+  config.pi.fallback = { provider: 'openrouter', model: 'primary' };
+  await assert.rejects(runPi(input), /quota exceeded\nFallback model primary also failed: quota exceeded/);
   delete config.pi.fallback;
   await assert.rejects(runPi(input), /quota exceeded/);
-  config.pi.fallback = { model: 'backup' };
+  config.pi.fallback = { provider: 'openrouter', model: 'backup' };
   await writeFile(fake, 'setInterval(()=>{},1000);'); config.pi.timeoutMs = 5000;
   const controller = new AbortController(); const turn = runPi({ ...input, signal: controller.signal });
   setTimeout(() => controller.abort(), 100);

@@ -91,11 +91,14 @@ preserving an existing user limit. This does not limit account spending.
 Other providers supported by Pi can also be used.
 
 A fallback model is optional. Add `pi.fallback` with `provider` and `model`
-(and `thinking`, which otherwise follows the primary). When the primary model
+(and `thinking`, which otherwise follows the primary; `provider` is not inherited). When the primary model
 fails before any tool has run, for example on a quota, login or provider error,
 the turn is retried once on the fallback, and the reply ends with a one-line note
 naming it (`"notify": false` removes the note). A turn that already ran a tool, or
-that the user stopped, is not retried, so no action is repeated. Example:
+that the user stopped, is not retried, so no action is repeated. The fallback has
+its own deadline, `timeoutMs` inside `pi.fallback`, 180 seconds by default. The
+retry resends the message in the same session, so after a fallback that message
+appears twice in the history. Example:
 `"fallback": { "provider": "openrouter", "model": "deepseek/deepseek-v4.1-flash" }`
 with a primary such as `openai-codex` / `gpt-6.1-sol`. Run `npm run model:configure`
 after setting an OpenRouter fallback.
